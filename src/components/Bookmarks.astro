@@ -172,6 +172,11 @@
     }
   }
 
+  // Bookmarks persist in the browser using localStorage under the "mona-bookmarks" key.
+  // When the page loads, loadBookmarksFromStorage() reads from localStorage and restores
+  // the user's bookmarks. When a new bookmark is added or cleared, saveBookmarksToStorage()
+  // updates the localStorage value, ensuring persistence across page reloads.
+
   // Event listeners
   form.addEventListener('submit', handleFormSubmit);
   clearAllButton.addEventListener('click', clearAllBookmarks);
