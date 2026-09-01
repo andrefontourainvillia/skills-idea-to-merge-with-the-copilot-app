@@ -6,8 +6,6 @@
 // must run ONLY in the client-side <script> boundary at the bottom of this
 // file. Astro runs that script in the browser, never during the build, so
 // browser-only APIs are safe there.
-//
-// You will implement the behavior in Step 3.
 ---
 <form id="add-bookmark">
   <div class="field">
@@ -39,32 +37,186 @@
   <!-- Bookmarks render here in the browser. -->
 </ul>
 
-<script>
+<script type="module">
   // CLIENT-SIDE BOUNDARY — runs in the browser only.
-  //
-  // TODO (Step 3): implement the bookmarks feature here.
-  //   1. On form submit, call event.preventDefault() FIRST so the page
-  //      never reloads, then read and validate the original URL.
-  //   2. Generate a short slug with a "mona-" prefix (for example, base62
-  //      of a counter or hash → "mona-7fk2").
-  //   3. Save the original URL and its slug, then persist them in the browser.
-  //   4. Render each saved bookmark into #bookmark-list as a row (li.bookmark) with:
-  //        - the original URL as a link (.url) that opens in a new tab,
-  //        - its short slug shown as a badge (.slug), and
-  //        - a "Copy" button (.copy) that copies the slug.
-  //   5. Toggle empty vs. saved state: hide #empty-state and show #list-header
-  //      (the "Saved bookmarks" heading + "Clear all" button) once at least one
-  //      bookmark exists; reverse it when the list is empty.
-  //   6. Wire the #clear-all button to remove every saved bookmark (clear the
-  //      list, clear browser storage) after a quick confirm.
-  //   7. On page load, read the saved bookmarks from storage and render
-  //      them so the list persists across reloads.
-  //
-  // Because this code lives in a client <script>, browser storage APIs are
-  // safe to use here without breaking the static build.
-  const form = document.getElementById('add-bookmark');
-  form?.addEventListener('submit', (event) => {
-    event.preventDefault(); // keep this — stops the page from reloading
-    // Implement in Step 3.
-  });
+  // All browser storage APIs are safe here and never run during the static build.
+
+  import {
+    normalizeUrl,
+    generateSlug,
+    loadBookmarksFromStorage,
+    saveBookmarksToStorage,
+    formatBookmark,
+    type Bookmark,
+  } from '../lib/bookmarks.ts';
+
+  // DOM elements
+  const form = document.getElementById('add-bookmark') as HTMLFormElement;
+  const urlInput = document.getElementById('url') as HTMLInputElement;
+  const emptyState = document.getElementById('empty-state') as HTMLParagraphElement;
+  const listHeader = document.getElementById('list-header') as HTMLDivElement;
+  const bookmarkList = document.getElementById('bookmark-list') as HTMLUListElement;
+  const clearAllButton = document.getElementById('clear-all') as HTMLButtonElement;
+
+  // State
+  let bookmarks: Bookmark[] = [];
+
+  /**
+   * Toggles visibility of empty state vs. list header based on bookmark count.
+   */
+  function updateEmptyState(): void {
+    if (bookmarks.length === 0) {
+      emptyState.hidden = false;
+      listHeader.hidden = true;
+    } else {
+      emptyState.hidden = true;
+      listHeader.hidden = false;
+    }
+  }
+
+  /**
+   * Renders all bookmarks to the DOM.
+   */
+  function renderBookmarks(): void {
+    bookmarkList.innerHTML = '';
+
+    for (const bookmark of bookmarks) {
+      const li = document.createElement('li');
+      li.className = 'bookmark';
+
+      // URL link
+      const urlSpan = document.createElement('span');
+      urlSpan.className = 'url';
+      const link = document.createElement('a');
+      link.href = bookmark.url;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.textContent = bookmark.url;
+      urlSpan.appendChild(link);
+
+      // Separator (visual only, not in DOM structure)
+      const separator = document.createElement('span');
+      separator.className = 'separator';
+      separator.textContent = ' :: ';
+
+      // Slug badge
+      const slugSpan = document.createElement('span');
+      slugSpan.className = 'slug';
+      slugSpan.textContent = bookmark.slug;
+
+      // Copy button
+      const copyButton = document.createElement('button');
+      copyButton.type = 'button';
+      copyButton.className = 'copy';
+      copyButton.textContent = 'Copy';
+      copyButton.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(bookmark.slug);
+          const originalText = copyButton.textContent;
+          copyButton.textContent = 'Copied!';
+          setTimeout(() => {
+            copyButton.textContent = originalText;
+          }, 2000);
+        } catch (err) {
+          console.error('Failed to copy:', err);
+        }
+      });
+
+      li.appendChild(urlSpan);
+      li.appendChild(separator);
+      li.appendChild(slugSpan);
+      li.appendChild(copyButton);
+      bookmarkList.appendChild(li);
+    }
+
+    updateEmptyState();
+  }
+
+  /**
+   * Adds a new bookmark, saves it, and re-renders.
+   */
+  function addBookmark(url: string): void {
+    const normalized = normalizeUrl(url);
+    if (!normalized) return;
+
+    const slug = generateSlug();
+    const bookmark: Bookmark = { url: normalized, slug };
+
+    bookmarks.push(bookmark);
+    saveBookmarksToStorage(bookmarks);
+    renderBookmarks();
+    urlInput.value = '';
+    urlInput.focus();
+  }
+
+  /**
+   * Clears all bookmarks after confirmation.
+   */
+  function clearAllBookmarks(): void {
+    if (confirm('Are you sure you want to delete all bookmarks? This cannot be undone.')) {
+      bookmarks = [];
+      saveBookmarksToStorage(bookmarks);
+      renderBookmarks();
+    }
+  }
+
+  /**
+   * Form submission handler.
+   */
+  function handleFormSubmit(event: Event): void {
+    event.preventDefault(); // Must be first — stops page reload
+
+    const url = urlInput.value.trim();
+    if (url) {
+      addBookmark(url);
+    }
+  }
+
+  // Event listeners
+  form.addEventListener('submit', handleFormSubmit);
+  clearAllButton.addEventListener('click', clearAllBookmarks);
+
+  // Load bookmarks on page load and render them.
+  bookmarks = loadBookmarksFromStorage();
+  renderBookmarks();
 </script>
+
+<style>
+  .separator {
+    display: none;
+  }
+
+  @media (min-width: 30rem) {
+    .separator {
+      display: inline;
+    }
+
+    .bookmark {
+      align-items: center;
+    }
+
+    .bookmark .url {
+      flex: 1 1 auto;
+    }
+  }
+
+  @media (max-width: 29.999rem) {
+    .bookmark {
+      flex-wrap: wrap;
+      justify-content: space-between;
+    }
+
+    .bookmark .url {
+      flex: 1 1 100%;
+      margin-bottom: 0.5rem;
+    }
+
+    .bookmark .slug {
+      order: 2;
+    }
+
+    .bookmark .copy {
+      order: 3;
+    }
+  }
+</style>
